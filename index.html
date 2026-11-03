@@ -83,6 +83,21 @@
   .recent .who { flex: 1; min-width: 0; }
   .recent .who b, .recent .who span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .recent .who span { font-size: 14px; color: var(--muted); }
+  .listhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .listhead h2 { margin: 0; }
+  #count { color: var(--muted); font-weight: 500; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+  .btn.small { min-height: 44px; font-size: 15px; padding: 0 14px; flex: 1 1 150px; }
+  .btn.small svg { width: 18px; height: 18px; }
+  .sheetpanel { display: flex; flex-direction: column; gap: 12px; }
+  .sheetpanel .toolbar { margin: 0; }
+  .codehead { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+  pre.code { margin: 4px 0 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-x: auto; max-height: 260px; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .synced { color: var(--ok); font-size: 12px; font-weight: 600; }
+  .recent .del { border: 0; color: var(--muted); padding: 6px 8px; font-size: 20px; line-height: 1; }
+  .recent .del.confirm { color: var(--err); font-size: 13px; border: 1px solid currentColor; }
   .recent button { border: 1px solid var(--line); background: none; color: var(--accent); border-radius: 99px; padding: 6px 12px; font: 600 14px var(--font); cursor: pointer; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } .btn:active { transform: none; } }
 </style>
@@ -168,8 +183,53 @@
   </form>
 
   <section id="recentBox" hidden>
-    <h2>Recently scanned</h2>
+    <div class="listhead">
+      <h2>My contacts <span id="count"></span></h2>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="btn small" id="exportBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+        Export to Excel
+      </button>
+      <button type="button" class="btn small" id="sheetBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h8"/></svg>
+        <span id="sheetBtnText">Google Sheet</span>
+      </button>
+    </div>
+    <p class="note" id="listNote" hidden></p>
     <div class="panel"><ul class="recent" id="recent"></ul></div>
+  </section>
+
+  <section class="panel sheetpanel" id="sheetPanel" hidden>
+    <div class="listhead">
+      <h2>Google Sheet</h2>
+      <button type="button" class="icon-btn" id="sheetClose" aria-label="Close">×</button>
+    </div>
+    <p>Each contact you add is also copied into your own Google Sheet, with columns for Name, Phone, Company, Email and Address.</p>
+    <label class="f" for="sheetUrl">Your Google Sheet link (from step 5 below)
+      <input id="sheetUrl" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec">
+    </label>
+    <div class="toolbar">
+      <button type="button" class="btn small primary" id="sheetSave">Save link</button>
+      <button type="button" class="btn small" id="sheetSendAll">Send all contacts now</button>
+    </div>
+    <p class="note" id="sheetStatus" aria-live="polite"></p>
+    <details id="sheetHelp">
+      <summary><b>One-time setup (about 5 minutes)</b></summary>
+      <p class="note" style="margin:8px 0">This is easiest on a computer, but works on iPhone in Safari. If a page looks wrong on the phone, tap <b>aA</b> in the address bar, then <b>Request Desktop Website</b>.</p>
+      <ol class="steps">
+        <li>Go to <b>sheets.google.com</b> and create a blank spreadsheet. Name it “Business Cards”.</li>
+        <li>In the menu, open <b>Extensions → Apps Script</b>.</li>
+        <li>Delete what's there and paste the code below (use the Copy button). Tap <b>Save</b>.</li>
+        <li>Tap <b>Deploy → New deployment</b>. For type choose <b>Web app</b>. Set “Execute as” to <b>Me</b> and “Who has access” to <b>Anyone</b>. Tap <b>Deploy</b>, then <b>Authorize access</b> and allow it. If Google warns the app isn't verified, tap <b>Advanced → Go to project</b>, because it's your own script.</li>
+        <li>Copy the <b>Web app URL</b> it shows (ends in <code>/exec</code>), paste it in the box above and tap <b>Save link</b>.</li>
+      </ol>
+      <div class="codehead">
+        <span class="note">Apps Script code</span>
+        <button type="button" class="link-btn" id="copyCode">Copy code</button>
+      </div>
+      <pre class="code" id="scriptCode"></pre>
+    </details>
   </section>
 </main>
 
@@ -182,6 +242,7 @@
 
 <script src="ocr/tesseract.min.js"></script>
 <script src="parser.js"></script>
+<script src="sheets.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

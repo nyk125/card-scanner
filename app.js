@@ -18,6 +18,7 @@
     $("contactForm").hidden = view !== "review";
     $("savebar").hidden = view !== "review";
     $("recentBox").hidden = view !== "start" || !store.get("recent", []).length;
+    if (view !== "start") $("sheetPanel").hidden = true;
     if (view !== "review") $("addedBox").hidden = true;
     $("errorBox").hidden = true;
   }
@@ -197,17 +198,42 @@
     }
   }
 
+  function newId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
   function remember(c) {
     const list = store.get("recent", []);
-    const entry = { ...c, savedAt: Date.now() };
     const key = (x) => [x.firstName, x.lastName, x.company].join("|").toLowerCase();
-    const next = [entry, ...list.filter((x) => key(x) !== key(entry))].slice(0, 20);
-    store.set("recent", next);
+    const old = list.find((x) => key(x) === key(c));
+    const entry = { ...c, id: old ? old.id : newId(), savedAt: old ? old.savedAt : Date.now(), synced: false };
+    store.set("recent", [entry, ...list.filter((x) => key(x) !== key(entry))].slice(0, 2000));
+    renderRecent();
+    return entry;
+  }
+  function markSynced(ids) {
+    const set = new Set(ids);
+    store.set("recent", store.get("recent", []).map((x) => (set.has(x.id) ? { ...x, synced: true } : x)));
     renderRecent();
   }
+  function sheetUrl() { return store.get("sheetUrl", ""); }
+
+  async function syncToSheet(contacts, statusEl, opts) {
+    const url = sheetUrl();
+    if (!url || !contacts.length) return;
+    try {
+      await Sheets.sendToSheet(url, contacts, opts);
+      markSynced(contacts.map((c) => c.id));
+      if (statusEl) statusEl.textContent = `Sent ${contacts.length} contact${contacts.length === 1 ? "" : "s"} to your Google Sheet. Rows already in the sheet are skipped.`;
+    } catch {
+      if (statusEl) statusEl.textContent = "Couldn't reach Google. Check your internet connection and try again.";
+    }
+  }
+
   function renderRecent() {
     const list = store.get("recent", []);
     const ul = $("recent"); ul.replaceChildren();
+    $("count").textContent = list.length ? `(${list.length})` : "";
+    $("sheetBtnText").textContent = sheetUrl() ? "Google Sheet ✓" : "Google Sheet";
     for (const c of list) {
       const li = document.createElement("li");
       const name = (c.firstName + " " + c.lastName).trim() || c.company || "Contact";
@@ -215,14 +241,87 @@
       av.textContent = ((c.firstName || name)[0] || "?").toUpperCase() + ((c.lastName || "")[0] || "").toUpperCase();
       const who = document.createElement("div"); who.className = "who";
       const b = document.createElement("b"); b.textContent = name;
-      const s = document.createElement("span"); s.textContent = [c.title, c.firstName || c.lastName ? c.company : ""].filter(Boolean).join(" · ") || (c.emails || [])[0] || "";
+      const s = document.createElement("span");
+      s.textContent = [c.title, c.firstName || c.lastName ? c.company : ""].filter(Boolean).join(" · ") || (c.emails || [])[0] || "";
       who.append(b, s);
+      if (sheetUrl() && c.synced) {
+        const ok = document.createElement("span"); ok.className = "synced"; ok.textContent = "In Google Sheet"; who.append(ok);
+      }
       const btn = document.createElement("button"); btn.type = "button"; btn.textContent = "Add again";
       btn.onclick = () => openVCard(CardParser.toVCard(c), c);
-      li.append(av, who, btn); ul.append(li);
+      const del = document.createElement("button"); del.type = "button"; del.className = "del"; del.textContent = "×";
+      del.setAttribute("aria-label", "Remove " + name + " from this list");
+      let armed = null;
+      del.onclick = () => {
+        if (!armed) {
+          del.textContent = "Remove"; del.classList.add("confirm");
+          armed = setTimeout(() => { armed = null; del.textContent = "×"; del.classList.remove("confirm"); }, 3000);
+          return;
+        }
+        clearTimeout(armed);
+        store.set("recent", store.get("recent", []).filter((x) => x.id !== c.id || (c.id == null && x !== c)));
+        renderRecent();
+      };
+      li.append(av, who, btn, del); ul.append(li);
     }
-    $("recentBox").hidden = !$("start").hidden ? !list.length : true;
+    $("recentBox").hidden = $("start").hidden || !list.length;
   }
+
+  // ---------- spreadsheet ----------
+  $("exportBtn").onclick = async () => {
+    const list = store.get("recent", []);
+    const note = $("listNote");
+    if (!list.length) return;
+    note.hidden = false; note.textContent = "Making your spreadsheet…";
+    try {
+      const file = await Sheets.excelFile(list);
+      const how = await Sheets.shareFile(file);
+      note.textContent = how === "shared"
+        ? `Exported ${list.length} contact${list.length === 1 ? "" : "s"}.`
+        : how === "downloaded" ? "Your spreadsheet was downloaded. Find it in the Files app under Downloads."
+        : "";
+      if (!note.textContent) note.hidden = true;
+    } catch {
+      note.textContent = "Couldn't make the spreadsheet. Please try again.";
+    }
+  };
+  $("sheetBtn").onclick = () => {
+    $("sheetPanel").hidden = false;
+    $("sheetUrl").value = sheetUrl();
+    $("sheetHelp").open = !sheetUrl();
+    $("sheetStatus").textContent = sheetUrl() ? "Connected. New contacts are copied to your sheet when you tap Add to Contacts." : "";
+    $("sheetPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  $("sheetClose").onclick = () => { $("sheetPanel").hidden = true; };
+  $("scriptCode").textContent = Sheets.SCRIPT;
+  $("copyCode").onclick = async () => {
+    try { await navigator.clipboard.writeText(Sheets.SCRIPT); $("copyCode").textContent = "Copied"; }
+    catch {
+      const r = document.createRange(); r.selectNodeContents($("scriptCode"));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      $("copyCode").textContent = "Selected — tap Copy";
+    }
+    setTimeout(() => { $("copyCode").textContent = "Copy code"; }, 2500);
+  };
+  $("sheetSave").onclick = () => {
+    const u = $("sheetUrl").value.trim();
+    if (!u) {
+      store.set("sheetUrl", ""); $("sheetStatus").textContent = "Google Sheet turned off."; renderRecent(); return;
+    }
+    if (!Sheets.validSheetUrl(u)) {
+      $("sheetStatus").textContent = "That doesn't look like a web app link. It should start with https://script.google.com/macros/s/ and end with /exec.";
+      return;
+    }
+    store.set("sheetUrl", u);
+    $("sheetStatus").textContent = "Saved. Sending your contacts…";
+    renderRecent();
+    syncToSheet(store.get("recent", []), $("sheetStatus"));
+  };
+  $("sheetSendAll").onclick = () => {
+    if (!sheetUrl()) { $("sheetStatus").textContent = "Paste your Google Sheet link and tap Save link first."; return; }
+    $("sheetStatus").textContent = "Sending…";
+    syncToSheet(store.get("recent", []), $("sheetStatus"));
+  };
 
   // ---------- wiring ----------
   $("camera").addEventListener("change", (e) => handleFile(e.target.files[0]));
@@ -236,7 +335,8 @@
       $("errorBox").hidden = false; return;
     }
     $("errorBox").hidden = true;
-    remember(c);
+    const entry = remember(c);
+    syncToSheet([entry], null, { beacon: true });
     $("addedBox").hidden = false;
     $("shareBtn").onclick = () => shareVCard(CardParser.toVCard(c), c);
     openVCard(CardParser.toVCard(c), c);
@@ -244,6 +344,11 @@
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  // Contacts saved before the spreadsheet update have no ID yet.
+  const existing = store.get("recent", []);
+  if (existing.some((x) => !x.id)) {
+    store.set("recent", existing.map((x) => (x.id ? x : { ...x, id: newId(), savedAt: x.savedAt || Date.now() })));
   }
   show("start");
   renderRecent();

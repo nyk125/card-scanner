@@ -1,7 +1,7 @@
 // Keeps the app working offline and turns contact.vcf?d=... into a real vCard file,
 // which iPhone opens as a "Create New Contact" screen.
-const VERSION = "card-scanner-v1";
-const SHELL = ["./", "index.html", "app.js", "parser.js", "manifest.webmanifest",
+const VERSION = "card-scanner-v2";
+const SHELL = ["./", "index.html", "app.js", "parser.js", "sheets.js", "vendor/xlsx.mini.min.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
