@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Card Scanner</title>
+<meta name="description" content="Scan a business card and add it to your contacts.">
+<meta name="theme-color" content="#1f5fd1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Card Scanner">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  /* Layout: one narrow column, a big scan button up top, form below, sticky save bar. */
+  :root {
+    --bg: #f3f5f9; --surface: #ffffff; --fg: #141a26; --muted: #5d6779; --line: #dde2ea;
+    --accent: #1f5fd1; --accent-fg: #ffffff; --accent-soft: #e5edfc; --ok: #13804b; --err: #b42318;
+    --radius: 14px;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1218; --surface: #171d27; --fg: #eef1f6; --muted: #98a2b3; --line: #2a3240;
+      --accent: #5b8ef0; --accent-fg: #0b1220; --accent-soft: #1b2a45; --ok: #4cc58a; --err: #f97066; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.45 var(--font); -webkit-text-size-adjust: 100%;
+    padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) calc(110px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  main { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; padding-top: 16px; }
+  h1 { font-size: 28px; line-height: 1.15; margin: 8px 0 0; letter-spacing: -0.01em; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  p { margin: 0; }
+  .lede { color: var(--muted); }
+  [hidden] { display: none !important; }
+
+  .actions { display: grid; gap: 10px; }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 18px;
+    border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+    font: 600 17px/1 var(--font); cursor: pointer; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); min-height: 60px; font-size: 18px; }
+  .btn:active { transform: scale(0.985); }
+  .btn:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .btn svg { width: 22px; height: 22px; flex: none; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .status { display: flex; flex-direction: column; gap: 10px; }
+  .bar { height: 8px; background: var(--accent-soft); border-radius: 99px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .preview { width: 100%; max-height: 220px; object-fit: contain; border-radius: 10px; background: var(--bg); }
+
+  form { display: flex; flex-direction: column; gap: 18px; }
+  fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+  label.f { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); min-width: 0; }
+  input, select { width: 100%; min-width: 0; font: 17px/1.3 var(--font); color: var(--fg); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; -webkit-appearance: none; appearance: none; }
+  select { padding-right: 8px; }
+  .phone { display: grid; grid-template-columns: 96px 1fr 40px; gap: 8px; align-items: center; }
+  .icon-btn { width: 40px; height: 44px; border: 0; background: none; color: var(--muted); font-size: 22px; cursor: pointer; border-radius: 10px; }
+  .link-btn { align-self: flex-start; border: 0; background: none; color: var(--accent); font: 600 15px var(--font); padding: 6px 0; cursor: pointer; }
+
+  .savebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-top: 1px solid var(--line);
+    padding: 12px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .savebar .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+
+  .note { font-size: 14px; color: var(--muted); }
+  .done { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+  .done strong { color: var(--ok); }
+  .error { color: var(--err); }
+  ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+
+  .recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .recent li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .recent li:first-child { border-top: 0; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+    display: grid; place-items: center; font-weight: 700; flex: none; }
+  .recent .who { flex: 1; min-width: 0; }
+  .recent .who b, .recent .who span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent .who span { font-size: 14px; color: var(--muted); }
+  .recent button { border: 1px solid var(--line); background: none; color: var(--accent); border-radius: 99px; padding: 6px 12px; font: 600 14px var(--font); cursor: pointer; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } .btn:active { transform: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Card Scanner</h1>
+    <p class="lede">Take a photo of a business card. The details are read on your phone and you add them to Contacts with one tap.</p>
+  </header>
+
+  <section class="actions" id="start">
+    <label class="btn primary" for="camera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><rect x="7" y="8" width="10" height="8" rx="1.5"/></svg>
+      Scan a card
+    </label>
+    <input id="camera" type="file" accept="image/*" capture="environment">
+    <label class="btn" for="library">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/></svg>
+      Choose from Photos
+    </label>
+    <input id="library" type="file" accept="image/*">
+    <p class="note">Tip: lay the card on a plain, dark surface in good light and fill most of the frame.</p>
+  </section>
+
+  <section class="panel status" id="working" hidden aria-live="polite">
+    <img class="preview" id="preview" alt="The card you scanned">
+    <p id="statusText">Reading card…</p>
+    <div class="bar"><span id="barFill"></span></div>
+    <p class="note" id="firstRun" hidden>The first scan loads the text reader (about 7 MB). After that it works offline.</p>
+  </section>
+
+  <p class="panel error" id="errorBox" hidden></p>
+
+  <section class="panel done" id="addedBox" hidden aria-live="polite">
+    <p><strong>Almost done.</strong> On the contact screen that opened, tap <b>Create New Contact</b>, then <b>Done</b>.</p>
+    <p class="note" style="margin-top:8px">Nothing opened? Tap “Add to Contacts” again, or use “More ways to save” below.</p>
+    <button type="button" class="link-btn" id="shareBtn">More ways to save</button>
+  </section>
+
+  <form id="contactForm" hidden autocomplete="off">
+    <img class="preview" id="formPreview" alt="The card you scanned">
+    <fieldset>
+      <h2>Name</h2>
+      <div class="row">
+        <label class="f">First name<input id="firstName"></label>
+        <label class="f">Last name<input id="lastName"></label>
+      </div>
+      <div class="row">
+        <label class="f">Middle<input id="middleName"></label>
+        <label class="f">Title / suffix (PhD…)<input id="suffix"></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <h2>Work</h2>
+      <label class="f">Company<input id="company"></label>
+      <label class="f">Job title<input id="title"></label>
+    </fieldset>
+    <fieldset>
+      <h2>Phone</h2>
+      <div id="phones" style="display:flex;flex-direction:column;gap:8px"></div>
+      <button type="button" class="link-btn" id="addPhone">+ Add phone</button>
+    </fieldset>
+    <fieldset>
+      <h2>Email and web</h2>
+      <div id="emails" style="display:flex;flex-direction:column;gap:8px"></div>
+      <label class="f">Website<input id="website" inputmode="url" autocapitalize="off" spellcheck="false"></label>
+    </fieldset>
+    <fieldset>
+      <h2>Address</h2>
+      <label class="f">Street<input id="street"></label>
+      <div class="row3">
+        <label class="f">City<input id="city"></label>
+        <label class="f">State<input id="state"></label>
+        <label class="f">ZIP<input id="zip"></label>
+      </div>
+      <label class="f">Country<input id="country"></label>
+    </fieldset>
+    <details class="note">
+      <summary>Text read from the card</summary>
+      <pre id="rawText" style="white-space:pre-wrap;font-size:13px;margin:8px 0 0"></pre>
+    </details>
+  </form>
+
+  <section id="recentBox" hidden>
+    <h2>Recently scanned</h2>
+    <div class="panel"><ul class="recent" id="recent"></ul></div>
+  </section>
+</main>
+
+<div class="savebar" id="savebar" hidden>
+  <div class="inner">
+    <button type="button" class="btn" id="cancelBtn">Cancel</button>
+    <button type="button" class="btn primary" id="saveBtn">Add to Contacts</button>
+  </div>
+</div>
+
+<script src="ocr/tesseract.min.js"></script>
+<script src="parser.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
